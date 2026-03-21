@@ -1,0 +1,4 @@
+Images/ 
+Images_processed/ 
+models/*.keras 
+__pycache__/ 
