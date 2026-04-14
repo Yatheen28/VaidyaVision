@@ -23,7 +23,7 @@ MODELS_DIR    = r"C:\DIP_PBL\models"
 IMG_SIZE      = 224
 BATCH_SIZE    = 32
 EPOCHS_PHASE1 = 15
-EPOCHS_PHASE2 = 25
+EPOCHS_PHASE2 = 30
 os.makedirs(MODELS_DIR, exist_ok=True)
  
 # Exact folder names — must match your Images/ subfolders exactly
@@ -345,7 +345,7 @@ if __name__ == "__main__":
     print("="*50)
  
     base_model.trainable = True
-    for layer in base_model.layers[:-30]:
+    for layer in base_model.layers[:-50]:
         layer.trainable = False
  
     trainable_count = sum(1 for l in base_model.layers if l.trainable)
@@ -379,7 +379,7 @@ if __name__ == "__main__":
     plot_history(history2, 'Phase2_Finetune')
  
     # ── SAVE FINAL MODEL ──────────────────────────────────────────────────────
-    final_path = os.path.join(MODELS_DIR, 'vaidyavision_final.keras')
+    final_path = os.path.join(MODELS_DIR, 'vaidyavision_v2.keras')
     model.save(final_path)
     print(f"\nFinal model saved: {final_path}")
  
