@@ -69,17 +69,16 @@ export default function Navbar() {
   return (
     <>
       <nav
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-          scrolled
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled
             ? 'bg-white/90 backdrop-blur-lg shadow-glass border-b border-forest-100/50'
             : 'bg-transparent'
-        }`}
+          }`}
       >
         <div className="section-container">
           <div className="flex items-center justify-between h-16 md:h-18">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2.5 group">
-              <Logo />
+              <img src="/logo.png" alt="VaidyaVision" className="h-10 w-auto" />
               <span className="font-display text-xl font-semibold text-forest-800 group-hover:text-sage transition-colors">
                 Vaidya<span className="text-sage">Vision</span>
               </span>
@@ -91,11 +90,10 @@ export default function Navbar() {
                 <Link
                   key={link.to}
                   to={link.to}
-                  className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                    isActive(link.to)
+                  className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${isActive(link.to)
                       ? 'text-forest-800'
                       : 'text-ink-muted hover:text-forest-800 hover:bg-forest-50/50'
-                  }`}
+                    }`}
                 >
                   {link.label}
                   {isActive(link.to) && (
@@ -154,11 +152,10 @@ export default function Navbar() {
                   <Link
                     key={link.to}
                     to={link.to}
-                    className={`block px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                      isActive(link.to)
+                    className={`block px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive(link.to)
                         ? 'bg-forest-50 text-forest-800'
                         : 'text-ink-muted hover:bg-forest-50 hover:text-forest-800'
-                    }`}
+                      }`}
                   >
                     {link.label}
                   </Link>

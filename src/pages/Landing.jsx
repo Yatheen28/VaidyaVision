@@ -151,10 +151,10 @@ function FloatingLeaf() {
 }
 
 const STATS = [
-  { value: 88.6, suffix: '%', label: 'Model Accuracy' },
-  { value: 6, suffix: '', label: 'Species Classified' },
-  { value: 1509, suffix: '', label: 'Training Images' },
-  { value: 70, suffix: '-90%', label: 'Adulteration Rate in AYUSH Industry' },
+  { label: 'AI-Powered Analysis', text: 'AI' },
+  { value: 6, suffix: '+', label: 'Species Supported' },
+  { value: 1500, suffix: '+', label: 'Training Samples' },
+  { label: 'Adulteration Detection Enabled', text: 'Yes' },
 ];
 
 const FEATURES = [
@@ -279,7 +279,11 @@ export default function Landing() {
                   {stat.suffix === '-90%' ? (
                     <span>{<CountUp end={stat.value} />}{stat.suffix}</span>
                   ) : (
-                    <CountUp end={stat.value} suffix={stat.suffix} />
+                    stat.text ? (
+                      <span className="text-3xl font-bold">{stat.text}</span>
+                    ) : (
+                      <CountUp end={stat.value} suffix={stat.suffix} />
+                    )
                   )}
                 </div>
                 <div className="text-sm text-forest-200 mt-1">{stat.label}</div>

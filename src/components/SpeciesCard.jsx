@@ -23,9 +23,9 @@ export default function SpeciesCard({ name, data, index = 0, onClick }) {
       className="glass-card-solid group cursor-pointer overflow-hidden"
       onClick={onClick}
     >
-      {/* Colored header with leaf initial */}
+      {/* HEADER */}
       <div
-        className={`relative h-44 ${colors.bg} flex items-center justify-center overflow-hidden`}
+        className={`relative h-48 ${colors.bg} flex flex-col items-center justify-start overflow-hidden`}
       >
         {/* Decorative leaves */}
         <motion.div
@@ -35,6 +35,7 @@ export default function SpeciesCard({ name, data, index = 0, onClick }) {
         >
           <Leaf size={120} color={colors.accent} />
         </motion.div>
+
         <motion.div
           className="absolute -bottom-2 -left-2 opacity-10 rotate-45"
           animate={{ rotate: [45, 55, 35, 45] }}
@@ -43,27 +44,34 @@ export default function SpeciesCard({ name, data, index = 0, onClick }) {
           <Leaf size={80} color={colors.accent} />
         </motion.div>
 
-        {/* Species initial */}
-        <div
-          className="relative z-10 w-20 h-20 rounded-2xl flex items-center justify-center shadow-glass"
-          style={{ backgroundColor: `${colors.accent}20`, borderColor: colors.accent, borderWidth: 2 }}
-        >
-          <span className={`text-3xl font-display font-bold ${colors.text}`}>
-            {name[0]}
-          </span>
+        {/* Image */}
+        <div className="mt-6 flex justify-center w-full">
+          <img
+            src={data.image}
+            alt={name}
+            className="w-24 h-24 object-cover rounded-xl shadow-md border border-white/40"
+          />
         </div>
 
-        {/* Accuracy badge */}
-        <div className="absolute top-3 right-3 px-2 py-1 rounded-lg bg-white/80 backdrop-blur-sm text-xs font-semibold text-forest-800">
-          {data.modelAccuracy} accuracy
+        {/* Badge */}
+        <div className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-white/80 backdrop-blur-sm text-xs font-semibold text-forest-800">
+          {data.modelAccuracy}
         </div>
       </div>
 
-      {/* Card body */}
+      {/* BODY */}
       <div className="p-5">
-        <h3 className="font-display text-xl font-semibold text-ink">{name}</h3>
-        <p className="text-xs text-ink-muted mt-0.5 font-medium">{data.hindiName}</p>
-        <p className="text-sm text-ink-muted mt-2 line-clamp-2">{data.description}</p>
+        <h3 className="font-display text-xl font-semibold text-ink">
+          {name}
+        </h3>
+
+        <p className="text-xs text-ink-muted mt-0.5 font-medium">
+          {data.hindiName}
+        </p>
+
+        <p className="text-sm text-ink-muted mt-2 line-clamp-2">
+          {data.description}
+        </p>
 
         {/* Traits */}
         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -77,7 +85,7 @@ export default function SpeciesCard({ name, data, index = 0, onClick }) {
           ))}
         </div>
 
-        {/* View Details */}
+        {/* Button */}
         <button className="mt-4 text-sm font-medium text-sage group-hover:text-forest-800 transition-colors flex items-center gap-1">
           View Details
           <motion.span

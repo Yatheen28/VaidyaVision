@@ -65,13 +65,12 @@ export default function DropZone({ onFileSelect, accept = '.jpg,.jpeg,.png' }) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer overflow-hidden ${
-          isDragging
-            ? 'border-sage bg-forest-50/50 scale-[1.02]'
-            : preview
+        className={`relative rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer overflow-hidden ${isDragging
+          ? 'border-sage bg-forest-50/50 scale-[1.02]'
+          : preview
             ? 'border-forest-200 bg-white'
             : 'border-forest-200 bg-white hover:border-sage hover:bg-forest-50/30'
-        } ${isDragging ? 'animate-border-pulse' : ''}`}
+          } ${isDragging ? 'animate-border-pulse' : ''}`}
         whileHover={{ scale: preview ? 1 : 1.01 }}
         transition={{ duration: 0.2 }}
       >
