@@ -1,4 +1,43 @@
-Images/ 
-Images_processed/ 
-models/*.keras 
-__pycache__/ 
+# -----------------------------
+# Backend / Python
+# -----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Models (VERY IMPORTANT)
+models/*.keras
+models/*.pt
+
+# Large datasets / images
+Images/
+Images_processed/
+
+# -----------------------------
+# Frontend / Node
+# -----------------------------
+node_modules/
+dist/
+
+# Env files
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# AI / Agents / Internal
+# -----------------------------
+.agents/
+.claude/
+context.md
+
+# IDE
+.vscode/
+vaidyavision-ui/*.pt
+vaidyavision-ui/models/
+vaidyavision-ui/test_*.jpg
+vaidyavision-ui/train.py
+vaidyavision-ui/bulk_detect.py
