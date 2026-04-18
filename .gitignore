@@ -41,3 +41,10 @@ vaidyavision-ui/models/
 vaidyavision-ui/test_*.jpg
 vaidyavision-ui/train.py
 vaidyavision-ui/bulk_detect.py
+
+context.md
+quick_test.py
+test_*.jpg
+train.py
+*.pt
+skills-lock.json
