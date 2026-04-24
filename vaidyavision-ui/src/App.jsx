@@ -6,6 +6,7 @@ import Landing from './pages/Landing';
 import Authenticate from './pages/Authenticate';
 import BulkDetect from './pages/BulkDetect';
 import Species from './pages/Species';
+import Compare from './pages/Compare';
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -15,6 +16,7 @@ function AnimatedRoutes() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<PageTransition><Landing /></PageTransition>} />
         <Route path="/authenticate" element={<PageTransition><Authenticate /></PageTransition>} />
+        <Route path="/compare" element={<PageTransition><Compare /></PageTransition>} />
         <Route path="/bulk" element={<PageTransition><BulkDetect /></PageTransition>} />
         <Route path="/species" element={<PageTransition><Species /></PageTransition>} />
       </Routes>

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Leaf, RotateCcw } from 'lucide-react';
+import { Leaf, RotateCcw, CheckCircle, XCircle, AlertTriangle, HelpCircle, ChevronDown } from 'lucide-react';
 import DropZone from '../components/DropZone';
 import LoadingLeaf from '../components/LoadingLeaf';
 import AuthBadge from '../components/AuthBadge';
@@ -8,6 +8,8 @@ import ConfidenceGauge from '../components/ConfidenceGauge';
 import PredictionChart from '../components/PredictionChart';
 import { MOCK_MODE, API_URL, MOCK_DELAY, AUTH_THRESHOLD } from '../config';
 import { SPECIES_DATA } from '../data/speciesData';
+
+const SPECIES_OPTIONS = ['Amla', 'Ashwagandha', 'Bhrami', 'Curry', 'Neem', 'Tulsi'];
 
 // Mock API response
 const MOCK_RESPONSE = {
@@ -30,6 +32,7 @@ export default function Authenticate() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [selectedSpecies, setSelectedSpecies] = useState('not_sure');
 
   const handleFileSelect = useCallback((file) => {
     setSelectedFile(file);
@@ -57,6 +60,9 @@ export default function Authenticate() {
       } else {
         const formData = new FormData();
         formData.append('image', selectedFile);
+        if (selectedSpecies !== 'not_sure') {
+          formData.append('selected_species', selectedSpecies);
+        }
 
         const response = await fetch(`${API_URL}/predict`, {
           method: 'POST',
@@ -69,12 +75,15 @@ export default function Authenticate() {
         }
 
         const data = await response.json();
-        // Map response — backend returns: species, confidence, authentic, all_probs
+        // Map response — backend returns: predicted_species, predicted_confidence, authentic, all_probs, status, message
         setResult({
-          species: data.species || data.prediction,
-          confidence: data.confidence,
-          authentic: data.authentic ?? (data.confidence >= AUTH_THRESHOLD),
-          all_probs: data.all_probs || data.all_predictions || {},
+          species: data.predicted_species,
+          confidence: data.predicted_confidence,
+          authentic: data.authentic ?? (data.predicted_confidence >= AUTH_THRESHOLD),
+          all_probs: data.all_probs || {},
+          status: data.status,
+          message: data.message,
+          selected_species: data.selected_species || null,
         });
       }
     } catch (err) {
@@ -87,16 +96,74 @@ export default function Authenticate() {
     } finally {
       setLoading(false);
     }
-  }, [selectedFile]);
+  }, [selectedFile, selectedSpecies]);
 
   const handleReset = useCallback(() => {
     setSelectedFile(null);
     setImagePreview(null);
     setResult(null);
     setError(null);
+    setSelectedSpecies('not_sure');
   }, []);
 
   const speciesInfo = result ? SPECIES_DATA[result.species] : null;
+
+  // Renders the status badge for species-selected authentication mode
+  const renderStatusBadge = () => {
+    if (!result || !result.selected_species) return null;
+
+    const badgeConfig = {
+      AUTHENTIC: {
+        icon: CheckCircle,
+        title: `Confirmed Genuine ${result.selected_species}`,
+        subtitle: null,
+        classes: 'bg-authentic-bg text-authentic border-authentic/20',
+      },
+      ADULTERATED: {
+        icon: XCircle,
+        title: 'Adulteration Detected',
+        subtitle: result.message,
+        classes: 'bg-suspicious-bg text-suspicious border-suspicious/20',
+      },
+      SUSPICIOUS: {
+        icon: AlertTriangle,
+        title: 'Low Confidence \u2014 Possibly Adulterated',
+        subtitle: null,
+        classes: 'bg-amber-light/20 text-amber-dark border-amber/20',
+      },
+      UNKNOWN: {
+        icon: HelpCircle,
+        title: 'Cannot Identify \u2014 Try a Clearer Image',
+        subtitle: null,
+        classes: 'bg-gray-100 text-ink-muted border-gray-200',
+      },
+    };
+
+    const config = badgeConfig[result.status] || badgeConfig.UNKNOWN;
+    const Icon = config.icon;
+
+    return (
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{
+          type: 'spring',
+          stiffness: 300,
+          damping: 15,
+          delay: 0.2,
+        }}
+        className={`inline-flex items-center gap-3 px-5 py-3 rounded-xl font-medium text-sm border ${config.classes}`}
+      >
+        <Icon className="w-5 h-5 flex-shrink-0" />
+        <div>
+          <div className="font-semibold text-base">{config.title}</div>
+          {config.subtitle && (
+            <div className="text-xs opacity-80 mt-0.5">{config.subtitle}</div>
+          )}
+        </div>
+      </motion.div>
+    );
+  };
 
   return (
     <div className="min-h-screen pt-20 pb-16 bg-surface">
@@ -124,6 +191,32 @@ export default function Authenticate() {
               transition={{ delay: 0.1 }}
             >
               <div className="glass-card-solid p-6 md:p-8">
+                {/* Species Selector */}
+                <div className="mb-6">
+                  <label htmlFor="species-select" className="block text-sm font-medium text-ink mb-2">
+                    Select Species (optional)
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="species-select"
+                      value={selectedSpecies}
+                      onChange={(e) => setSelectedSpecies(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-forest-200 bg-white text-ink text-sm
+                                 focus:outline-none focus:ring-2 focus:ring-sage/50 focus:border-sage
+                                 appearance-none cursor-pointer transition-colors"
+                    >
+                      <option value="not_sure">Not sure &mdash; identify for me</option>
+                      {SPECIES_OPTIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted pointer-events-none" />
+                  </div>
+                  <p className="text-xs text-ink-light mt-1.5">
+                    Select a species to verify authenticity, or leave as &ldquo;Not sure&rdquo; for identification.
+                  </p>
+                </div>
+
                 <DropZone onFileSelect={handleFileSelect} />
 
                 {/* Analyze button */}
@@ -149,9 +242,10 @@ export default function Authenticate() {
                   <motion.div
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-4 p-3 bg-suspicious-bg border border-suspicious/20 rounded-xl text-sm text-suspicious"
+                    className="mt-4 p-3 bg-suspicious-bg border border-suspicious/20 rounded-xl text-sm text-suspicious flex items-start gap-2"
                   >
-                    ⚠️ {error}
+                    <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
                   </motion.div>
                 )}
               </div>
@@ -184,30 +278,38 @@ export default function Authenticate() {
                     />
                   )}
 
-                  {/* Auth badge + species name */}
+                  {/* Auth badge or status badge + species name */}
                   <div className="flex-1 text-center md:text-left">
-                    <AuthBadge
-                      authentic={result.authentic}
-                      species={result.species}
-                      confidence={result.confidence}
-                    />
-                    <motion.h2
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.4 }}
-                      className="font-display text-3xl font-bold text-ink mt-4"
-                    >
-                      {result.species}
-                    </motion.h2>
-                    {speciesInfo && (
-                      <motion.p
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ delay: 0.5 }}
-                        className="text-sm text-ink-muted mt-1"
-                      >
-                        {speciesInfo.hindiName}
-                      </motion.p>
+                    {result.selected_species ? (
+                      /* Species-selected mode: show status badge */
+                      renderStatusBadge()
+                    ) : (
+                      /* Generic mode: existing AuthBadge + species name */
+                      <>
+                        <AuthBadge
+                          authentic={result.authentic}
+                          species={result.species}
+                          confidence={result.confidence}
+                        />
+                        <motion.h2
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.4 }}
+                          className="font-display text-3xl font-bold text-ink mt-4"
+                        >
+                          {result.species}
+                        </motion.h2>
+                        {speciesInfo && (
+                          <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.5 }}
+                            className="text-sm text-ink-muted mt-1"
+                          >
+                            {speciesInfo.hindiName}
+                          </motion.p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -283,7 +385,10 @@ export default function Authenticate() {
                           Common Adulterants
                         </h4>
                         {speciesInfo.adulterants.map((a) => (
-                          <p key={a} className="text-xs text-amber-dark">⚠️ {a}</p>
+                          <p key={a} className="text-xs text-amber-dark flex items-center gap-1">
+                            <AlertTriangle size={11} className="flex-shrink-0" />
+                            {a}
+                          </p>
                         ))}
                       </div>
                     </div>

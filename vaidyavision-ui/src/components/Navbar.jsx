@@ -6,6 +6,7 @@ import { Menu, X } from 'lucide-react';
 const NAV_LINKS = [
   { label: 'Home', to: '/' },
   { label: 'Authenticate', to: '/authenticate' },
+  { label: 'Compare', to: '/compare' },
   { label: 'Bulk Detect', to: '/bulk' },
   { label: 'Species', to: '/species' },
 ];

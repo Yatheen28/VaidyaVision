@@ -6,11 +6,23 @@ __pycache__/
 *.pyo
 *.pyd
 
+# -----------------------------
 # Models (VERY IMPORTANT)
+# -----------------------------
 models/*.keras
 models/*.pt
+models/*.pkl
+models/*.json
+models/*.png
+models/reference_images/
 
+# Extra safety
+*.pt
+*.pkl
+
+# -----------------------------
 # Large datasets / images
+# -----------------------------
 Images/
 Images_processed/
 
@@ -20,10 +32,14 @@ Images_processed/
 node_modules/
 dist/
 
+# -----------------------------
 # Env files
+# -----------------------------
 .env
 
+# -----------------------------
 # OS files
+# -----------------------------
 .DS_Store
 Thumbs.db
 
@@ -34,17 +50,24 @@ Thumbs.db
 .claude/
 context.md
 
+# -----------------------------
 # IDE
+# -----------------------------
 .vscode/
-vaidyavision-ui/*.pt
+
+# -----------------------------
+# Frontend-specific exclusions
+# -----------------------------
 vaidyavision-ui/models/
+vaidyavision-ui/*.pt
 vaidyavision-ui/test_*.jpg
 vaidyavision-ui/train.py
 vaidyavision-ui/bulk_detect.py
 
-context.md
+# -----------------------------
+# Misc unwanted files
+# -----------------------------
 quick_test.py
 test_*.jpg
 train.py
-*.pt
 skills-lock.json
