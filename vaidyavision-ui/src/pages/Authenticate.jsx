@@ -103,12 +103,56 @@ function SimilarityBar({ label, pct }) {
   );
 }
 
+// ── Side-by-side visual panel ─────────────────────────────────────────────────
+function VisualPanel({ title, suspectB64, referenceB64, technique }) {
+  if (!suspectB64 || !referenceB64) return null;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-semibold text-ink-muted uppercase tracking-wide">
+          {title}
+        </span>
+        <span className="text-xs text-ink-light">{technique}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="text-center">
+          <img
+            src={`data:image/jpeg;base64,${suspectB64}`}
+            alt={`Uploaded ${title}`}
+            className="w-full rounded-lg border border-gray-100 bg-black"
+          />
+          <p className="text-xs text-ink-muted mt-1">Uploaded leaf</p>
+        </div>
+        <div className="text-center">
+          <img
+            src={`data:image/jpeg;base64,${referenceB64}`}
+            alt={`Reference ${title}`}
+            className="w-full rounded-lg border border-gray-100 bg-black"
+          />
+          <p className="text-xs text-ink-muted mt-1">Reference leaf</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Classical comparison collapsible section ──────────────────────────────────
-function ClassicalComparison({ classical }) {
+function ClassicalComparison({ classical, targetSpecies }) {
   const [open, setOpen] = useState(false);
   if (!classical) return null;
 
-  const { color_similarity_pct, texture_similarity_pct, vein_similarity_pct, overall_similarity_pct, verdict } = classical;
+  const {
+    color_similarity_pct,
+    texture_similarity_pct,
+    vein_similarity_pct,
+    overall_similarity_pct,
+    verdict,
+  } = classical;
+
+  const scoreColor =
+    overall_similarity_pct >= 75 ? 'text-green-600' :
+      overall_similarity_pct >= 55 ? 'text-amber-600' :
+        'text-red-600';
 
   return (
     <div className="glass-card-solid overflow-hidden">
@@ -122,10 +166,15 @@ function ClassicalComparison({ classical }) {
             Classical DIP Verification
           </div>
           <div className="text-xs text-ink-muted mt-0.5">
-            Overall similarity: <span className="font-medium text-ink">{overall_similarity_pct.toFixed(0)}%</span>
+            Similarity vs {targetSpecies} reference:{' '}
+            <span className={`font-semibold ${scoreColor}`}>
+              {overall_similarity_pct.toFixed(0)}%
+            </span>
           </div>
         </div>
-        {open ? <ChevronUp size={16} className="text-ink-muted" /> : <ChevronDown size={16} className="text-ink-muted" />}
+        {open
+          ? <ChevronUp size={16} className="text-ink-muted" />
+          : <ChevronDown size={16} className="text-ink-muted" />}
       </button>
 
       <AnimatePresence>
@@ -137,43 +186,44 @@ function ClassicalComparison({ classical }) {
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5 space-y-4">
-              {/* Verdict text */}
-              <p className="text-xs text-ink-muted leading-relaxed">{verdict}</p>
+            <div className="px-5 pb-5 space-y-5">
+              {/* Verdict summary pill */}
+              <p className="text-xs text-ink-muted leading-relaxed bg-gray-50 rounded-lg p-3">
+                {verdict}
+              </p>
 
               {/* Similarity bars */}
               <div className="space-y-2.5">
-                <SimilarityBar label="Color pattern" pct={color_similarity_pct} />
-                <SimilarityBar label="Texture profile" pct={texture_similarity_pct} />
-                <SimilarityBar label="Vein structure" pct={vein_similarity_pct} />
+                <SimilarityBar label="Color pattern (HSV histogram)"         pct={color_similarity_pct} />
+                <SimilarityBar label="Texture profile (CLAHE + GLCM)"        pct={texture_similarity_pct} />
+                <SimilarityBar label="Vein structure (Canny + morphology)"   pct={vein_similarity_pct} />
               </div>
 
-              {/* Visual comparisons — only if base64 data present */}
-              {classical.suspect_edges_b64 && classical.reference_edges_b64 && (
-                <div>
-                  <div className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">
-                    Edge / Vein Pattern
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="text-center">
-                      <img
-                        src={`data:image/jpeg;base64,${classical.suspect_edges_b64}`}
-                        alt="Uploaded leaf edges"
-                        className="w-full rounded-lg border border-gray-100"
-                      />
-                      <p className="text-xs text-ink-muted mt-1">Uploaded</p>
-                    </div>
-                    <div className="text-center">
-                      <img
-                        src={`data:image/jpeg;base64,${classical.reference_edges_b64}`}
-                        alt="Reference leaf edges"
-                        className="w-full rounded-lg border border-gray-100"
-                      />
-                      <p className="text-xs text-ink-muted mt-1">Reference</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Visual panels — only when base64 data is present */}
+              <div className="space-y-5 pt-1">
+                <div className="h-px bg-gray-100" />
+
+                <VisualPanel
+                  title="Edge Detection"
+                  technique="Technique 3: Gaussian blur → Canny"
+                  suspectB64={classical.suspect_edges_b64}
+                  referenceB64={classical.reference_edges_b64}
+                />
+
+                <VisualPanel
+                  title="Vein Pattern"
+                  technique="Technique 6: Morphological closing"
+                  suspectB64={classical.suspect_veins_b64}
+                  referenceB64={classical.reference_veins_b64}
+                />
+
+                <VisualPanel
+                  title="CLAHE Enhancement"
+                  technique="Technique 2: Lighting normalisation"
+                  suspectB64={classical.suspect_clahe_b64}
+                  referenceB64={classical.reference_clahe_b64}
+                />
+              </div>
             </div>
           </motion.div>
         )}
@@ -234,7 +284,6 @@ export default function Authenticate() {
         }
 
         const data = await response.json();
-        // data already matches the shape we expect — use it directly
         setResult(data);
       }
     } catch (err) {
@@ -258,9 +307,9 @@ export default function Authenticate() {
   }, []);
 
   // Derived display values — all from verdict (single source of truth)
-  const verdict = result?.verdict;
-  const dl = result?.dl;
-  const classical = result?.classical;
+  const verdict     = result?.verdict;
+  const dl          = result?.dl;
+  const classical   = result?.classical;
   const targetSpecies = result?.target_species;
   const speciesInfo = targetSpecies ? SPECIES_DATA?.[targetSpecies] : null;
 
@@ -331,8 +380,7 @@ export default function Authenticate() {
                     <button
                       onClick={handleAnalyze}
                       disabled={!selectedFile}
-                      className={`w-full btn-primary text-base py-3.5 ${!selectedFile ? 'opacity-40 cursor-not-allowed' : ''
-                        }`}
+                      className={`w-full btn-primary text-base py-3.5 ${!selectedFile ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
                       <Leaf size={18} />
                       Analyze Leaf
@@ -453,7 +501,8 @@ export default function Authenticate() {
               </div>
 
               {/* ── Classical DIP Verification (collapsible) ── */}
-              <ClassicalComparison classical={classical} />
+              {/* Now receives targetSpecies so header can say "vs Tulsi reference" */}
+              <ClassicalComparison classical={classical} targetSpecies={targetSpecies} />
 
               {/* ── Species Info ── */}
               {speciesInfo && (
