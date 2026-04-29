@@ -71,3 +71,19 @@ quick_test.py
 test_*.jpg
 train.py
 skills-lock.json
+# Python virtual env
+venv/
+backend/venv/
+
+# YOLO training outputs
+runs/
+
+# Datasets
+yolo_dataset/
+
+# Logs
+*.txt
+
+# Training scripts (optional - if not needed)
+train_*.py
+test_*.py

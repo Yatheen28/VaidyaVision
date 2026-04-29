@@ -9,13 +9,13 @@ import { MOCK_MODE, API_URL, MOCK_DELAY, AUTH_THRESHOLD } from '../config';
 // Mock bulk detection response
 const MOCK_BULK_RESPONSE = {
   detections: [
-    { id: 1, bbox: [50, 30, 200, 180], species: 'Neem', confidence: 0.87, authentic: true },
-    { id: 2, bbox: [220, 50, 380, 200], species: 'Tulsi', confidence: 0.92, authentic: true },
-    { id: 3, bbox: [100, 220, 280, 380], species: 'Curry', confidence: 0.58, authentic: false },
-    { id: 4, bbox: [310, 200, 460, 360], species: 'Amla', confidence: 0.81, authentic: true },
+    { id: 1, bbox: [50, 30, 200, 180], species: 'Neem', confidence_pct: 87.0, fused_score_pct: 82.0, is_authentic: true, status: 'AUTHENTIC', short_msg: 'Genuine Neem leaf confirmed' },
+    { id: 2, bbox: [220, 50, 380, 200], species: 'Tulsi', confidence_pct: 92.0, fused_score_pct: 88.0, is_authentic: true, status: 'AUTHENTIC', short_msg: 'Genuine Tulsi leaf confirmed' },
+    { id: 3, bbox: [100, 220, 280, 380], species: 'Curry', confidence_pct: 58.0, fused_score_pct: 52.0, is_authentic: false, status: 'SUSPICIOUS', short_msg: 'Low confidence' },
+    { id: 4, bbox: [310, 200, 460, 360], species: 'Amla', confidence_pct: 81.0, fused_score_pct: 76.0, is_authentic: true, status: 'AUTHENTIC', short_msg: 'Genuine Amla leaf confirmed' },
   ],
-  annotated_image_base64: null,
-  summary: { total: 4, authenticated: 3 },
+  annotated_image_b64: null,
+  summary: { total: 4, authenticated: 3, suspicious: 1 },
 };
 
 const SPECIES_COLORS = {
@@ -52,7 +52,7 @@ export default function BulkDetect() {
 
   // Draw mock bounding boxes on canvas when in MOCK_MODE
   useEffect(() => {
-    if (!result || !imagePreview || result.annotated_image_base64) return;
+    if (!result || !imagePreview || result.annotated_image_b64) return;
     // In mock mode, draw boxes on the uploaded image
     const img = new Image();
     img.onload = () => {
@@ -80,7 +80,7 @@ export default function BulkDetect() {
 
         // Label background
         ctx.fillStyle = color;
-        const label = `${det.species} ${(det.confidence * 100).toFixed(0)}%`;
+        const label = `${det.species} ${det.fused_score_pct || det.confidence_pct}%`;
         const textMetrics = ctx.measureText(label);
         ctx.fillRect(sx1, sy1 - 24, textMetrics.width + 12, 24);
 
@@ -116,24 +116,25 @@ export default function BulkDetect() {
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
 
         const data = await response.json();
-        // Mark authentic based on threshold
         data.detections = data.detections.map((d) => ({
           ...d,
-          authentic: d.authentic ?? (d.confidence >= AUTH_THRESHOLD),
         }));
         setResult(data);
 
         // If backend provides annotated image
-        if (data.annotated_image_base64) {
-          setAnnotatedSrc(`data:image/jpeg;base64,${data.annotated_image_base64}`);
+        if (data.annotated_image_b64) {
+          setAnnotatedSrc(`data:image/jpeg;base64,${data.annotated_image_b64}`);
         }
       }
     } catch (err) {
       console.error('Bulk detection failed:', err);
+      const isNetwork = err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
       setError(
         MOCK_MODE
           ? 'Mock detection failed unexpectedly.'
-          : 'Could not connect to backend. Is the server running?'
+          : isNetwork
+            ? `Cannot reach backend at ${API_URL}. If on mobile, ensure the backend PC's firewall allows port 8000.`
+            : `Detection failed: ${err.message}`
       );
     } finally {
       setLoading(false);
@@ -151,7 +152,7 @@ export default function BulkDetect() {
   const pieData = result
     ? [
         { name: 'Authenticated', value: result.summary.authenticated, color: '#2D6A4F' },
-        { name: 'Suspicious', value: result.summary.total - result.summary.authenticated, color: '#9B1C1C' },
+        { name: 'Suspicious', value: result.summary.suspicious || (result.summary.total - result.summary.authenticated), color: '#9B1C1C' },
       ]
     : [];
 
@@ -217,7 +218,7 @@ export default function BulkDetect() {
                   animate={{ opacity: 1, y: 0 }}
                   className="mt-4 p-3 bg-suspicious-bg border border-suspicious/20 rounded-xl text-sm text-suspicious"
                 >
-                  ⚠️ {error}
+                  {error}
                 </motion.div>
               )}
             </div>
@@ -243,7 +244,21 @@ export default function BulkDetect() {
               <>
                 {/* Annotated Image */}
                 <div className="glass-card-solid p-4 overflow-hidden">
-                  <h3 className="text-sm font-semibold text-ink mb-3">Annotated Image</h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-ink">Annotated Image</h3>
+                    {result.detection_method && (
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        result.detection_method === 'yolo'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          result.detection_method === 'yolo' ? 'bg-emerald-500' : 'bg-amber-500'
+                        }`} />
+                        {result.detection_method === 'yolo' ? 'YOLOv8 Detection' : result.detection_method === 'dip' ? 'DIP Segmentation' : 'Grid Scan'}
+                      </span>
+                    )}
+                  </div>
                   {annotatedSrc ? (
                     <motion.img
                       initial={{ opacity: 0 }}
@@ -292,6 +307,9 @@ export default function BulkDetect() {
                         </span>
                       </div>
                       <p className="text-sm text-ink-muted">Authenticated Leaves</p>
+                      {result.detection_method === 'yolo' && (
+                        <p className="text-xs text-emerald-600 mt-1 font-medium">Detected via YOLO object detection</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -329,28 +347,28 @@ export default function BulkDetect() {
                                 <div className="w-20 h-2 bg-gray-100 rounded-full overflow-hidden">
                                   <motion.div
                                     initial={{ width: 0 }}
-                                    animate={{ width: `${det.confidence * 100}%` }}
+                                    animate={{ width: `${det.fused_score_pct || det.confidence_pct}%` }}
                                     transition={{ duration: 0.8, delay: 0.1 * i }}
                                     className="h-full rounded-full"
                                     style={{
-                                      backgroundColor: det.authentic ? '#2D6A4F' : '#9B1C1C',
+                                      backgroundColor: det.is_authentic ? '#2D6A4F' : '#9B1C1C',
                                     }}
                                   />
                                 </div>
                                 <span className="text-xs text-ink-muted">
-                                  {(det.confidence * 100).toFixed(0)}%
+                                  {det.fused_score_pct || det.confidence_pct}%
                                 </span>
                               </div>
                             </td>
                             <td className="px-4 py-3">
                               <span
                                 className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                  det.authentic
+                                  det.is_authentic
                                     ? 'bg-authentic-bg text-authentic'
                                     : 'bg-suspicious-bg text-suspicious'
                                 }`}
                               >
-                                {det.authentic ? 'Authentic' : 'Suspicious'}
+                                {det.status || (det.is_authentic ? 'Authentic' : 'Suspicious')}
                               </span>
                             </td>
                           </motion.tr>

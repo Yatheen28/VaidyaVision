@@ -18,7 +18,7 @@ const MOCK_RESPONSE = {
   verdict: {
     status: 'AUTHENTIC',
     short_msg: 'Genuine Tulsi leaf confirmed',
-    detail_msg: 'The AI model identified this as Tulsi with 92.3% confidence, supported by 81% classical DIP similarity to the reference leaf.',
+    detail_msg: 'The model identified this as Tulsi with 92.3% confidence, supported by 81% feature similarity to the reference leaf.',
     color: 'green',
     fused_score: 0.887,
     fused_score_pct: 88.7,
@@ -38,7 +38,7 @@ const MOCK_RESPONSE = {
     texture_similarity_pct: 78.0,
     vein_similarity_pct: 79.0,
     overall_similarity_pct: 81.0,
-    verdict: 'High similarity — DIP features closely match the genuine reference.',
+    verdict: 'High similarity -- visual features closely match the genuine reference.',
     suspect_edges_b64: null,
     suspect_veins_b64: null,
     suspect_clahe_b64: null,
@@ -137,7 +137,7 @@ function VisualPanel({ title, suspectB64, referenceB64, technique }) {
 }
 
 // ── Classical comparison collapsible section ──────────────────────────────────
-function ClassicalComparison({ classical, targetSpecies }) {
+function ClassicalComparison({ classical, targetSpecies, mismatchNote }) {
   const [open, setOpen] = useState(false);
   if (!classical) return null;
 
@@ -163,7 +163,7 @@ function ClassicalComparison({ classical, targetSpecies }) {
       >
         <div>
           <div className="text-sm font-semibold text-ink">
-            Classical DIP Verification
+            Feature Verification
           </div>
           <div className="text-xs text-ink-muted mt-0.5">
             Similarity vs {targetSpecies} reference:{' '}
@@ -187,6 +187,14 @@ function ClassicalComparison({ classical, targetSpecies }) {
             className="overflow-hidden"
           >
             <div className="px-5 pb-5 space-y-5">
+              {/* Mismatch warning */}
+              {mismatchNote && (
+                <div className="flex items-start gap-2 text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded-lg p-3">
+                  <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                  <span>{mismatchNote}</span>
+                </div>
+              )}
+
               {/* Verdict summary pill */}
               <p className="text-xs text-ink-muted leading-relaxed bg-gray-50 rounded-lg p-3">
                 {verdict}
@@ -205,21 +213,21 @@ function ClassicalComparison({ classical, targetSpecies }) {
 
                 <VisualPanel
                   title="Edge Detection"
-                  technique="Technique 3: Gaussian blur → Canny"
+                  technique="Gaussian blur + Canny edge detection"
                   suspectB64={classical.suspect_edges_b64}
                   referenceB64={classical.reference_edges_b64}
                 />
 
                 <VisualPanel
                   title="Vein Pattern"
-                  technique="Technique 6: Morphological closing"
+                  technique="Morphological closing"
                   suspectB64={classical.suspect_veins_b64}
                   referenceB64={classical.reference_veins_b64}
                 />
 
                 <VisualPanel
                   title="CLAHE Enhancement"
-                  technique="Technique 2: Lighting normalisation"
+                  technique="Lighting normalisation"
                   suspectB64={classical.suspect_clahe_b64}
                   referenceB64={classical.reference_clahe_b64}
                 />
@@ -288,10 +296,13 @@ export default function Authenticate() {
       }
     } catch (err) {
       console.error('Analysis failed:', err);
+      const isNetwork = err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
       setError(
         MOCK_MODE
           ? 'Mock analysis failed unexpectedly.'
-          : `Could not connect to the backend. Please ensure the server is running at ${API_URL}`
+          : isNetwork
+            ? `Cannot reach backend at ${API_URL}. If on mobile, ensure the backend PC's firewall allows port 8000.`
+            : `Analysis failed: ${err.message}`
       );
     } finally {
       setLoading(false);
@@ -487,9 +498,12 @@ export default function Authenticate() {
                   <ConfidenceGauge value={verdict.fused_score} />
                   {classical && (
                     <p className="text-xs text-ink-muted mt-2 text-center">
-                      AI {dl.confidence_pct.toFixed(0)}% + DIP {classical.overall_similarity_pct.toFixed(0)}%
+                      DL model: {dl.confidence_pct.toFixed(0)}% | Feature similarity: {classical.overall_similarity_pct.toFixed(0)}%
                     </p>
                   )}
+                  <p className="text-[10px] text-ink-light mt-1 text-center italic">
+                    Score = 60% DL model + 40% feature analysis
+                  </p>
                 </div>
 
                 <div className="glass-card-solid p-6">
@@ -500,9 +514,13 @@ export default function Authenticate() {
                 </div>
               </div>
 
-              {/* ── Classical DIP Verification (collapsible) ── */}
+              {/* -- Feature Verification (collapsible) -- */}
               {/* Now receives targetSpecies so header can say "vs Tulsi reference" */}
-              <ClassicalComparison classical={classical} targetSpecies={targetSpecies} />
+              <ClassicalComparison
+                classical={classical}
+                targetSpecies={targetSpecies}
+                mismatchNote={verdict.mismatch_note}
+              />
 
               {/* ── Species Info ── */}
               {speciesInfo && (

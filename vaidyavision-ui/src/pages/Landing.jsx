@@ -168,7 +168,7 @@ const FEATURES = [
   {
     icon: Layers,
     title: 'Bulk Batch Detection',
-    description: 'Detect and classify multiple leaves in a single image using YOLOv8 object detection with bounding box annotations.',
+    description: 'Detect and classify multiple leaves in a single image using classical DIP segmentation with annotated bounding boxes.',
     link: '/bulk',
     color: 'bg-amber-light/10 text-amber',
   },
@@ -204,7 +204,7 @@ export default function Landing() {
                 className="inline-flex items-center gap-2 px-3 py-1.5 bg-forest-50 rounded-full text-xs font-semibold text-forest-800 mb-6"
               >
                 <Shield size={14} className="text-sage" />
-                Powered by EfficientNetB0 + YOLOv8
+                Powered by EfficientNetB0 + Classical DIP
               </motion.div>
 
               <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-ink leading-tight">
@@ -234,7 +234,7 @@ export default function Landing() {
               <div className="flex items-center gap-4 mt-8 text-xs text-ink-muted">
                 <span className="flex items-center gap-1.5">
                   <Target size={14} className="text-sage" />
-                  88.6% Accuracy
+                  95.7% Accuracy
                 </span>
                 <span className="w-1 h-1 bg-ink-light rounded-full" />
                 <span className="flex items-center gap-1.5">
@@ -354,7 +354,7 @@ export default function Landing() {
 
           </p>
           <p className="text-forest-400 text-xs mt-2">
-            Powered by EfficientNetB0 + YOLOv8 · Digital Image Processing Project
+            Powered by EfficientNetB0 + Classical DIP Pipeline
           </p>
           <p className="text-forest-500 text-xs mt-4">
             © {new Date().getFullYear()} VaidyaVision. All rights reserved.

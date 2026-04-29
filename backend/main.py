@@ -27,11 +27,14 @@ from typing import Optional
 # ── PATHS ─────────────────────────────────────────────────────────────────────
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR   = os.path.join(BASE_DIR, '..', 'models')
-MODEL_PATH   = os.path.join(MODELS_DIR, 'vaidyavision_v2.keras')
+MODEL_V3     = os.path.join(MODELS_DIR, 'vaidyavision_v3.keras')
+MODEL_V2     = os.path.join(MODELS_DIR, 'vaidyavision_v2.keras')
+MODEL_PATH   = MODEL_V3 if os.path.exists(MODEL_V3) else MODEL_V2
 SVM_PATH     = os.path.join(MODELS_DIR, 'svm_all_combined.pkl')
 REFS_PATH    = os.path.join(MODELS_DIR, 'reference_paths.json')
 SVM_RES_PATH = os.path.join(MODELS_DIR, 'svm_results.json')
-TEMP_PATH    = os.path.join(MODELS_DIR, 'temperature.json')      # ← NEW
+TEMP_PATH    = os.path.join(MODELS_DIR, 'temperature.json')
+YOLO_PATH    = os.path.join(MODELS_DIR, 'yolo_leaf_detector.pt')
 
 CLASS_NAMES = ['Amla', 'Ashwagandha', 'Bhrami', 'Curry', 'Neem', 'Tulsi']
 IMG_SIZE    = 224
@@ -193,9 +196,9 @@ if os.path.exists(TEMP_PATH):
         _td = json.load(f)
     _TEMPERATURE = float(_td.get('temperature', 1.5))
     print(f"[VaidyaVision] Temperature scaling: T={_TEMPERATURE:.3f}  "
-          f"(avg conf {_td.get('avg_conf_before_pct','?')}% → {_td.get('avg_conf_after_pct','?')}%)")
+          f"(avg conf {_td.get('avg_conf_before_pct','?')}% -> {_td.get('avg_conf_after_pct','?')}%)")
 else:
-    print(f"[VaidyaVision] temperature.json not found — using fallback T={_TEMPERATURE}")
+    print(f"[VaidyaVision] temperature.json not found -- using fallback T={_TEMPERATURE}")
     print("[VaidyaVision] Run calibrate.py once to generate an optimal temperature.")
 
 # Load SVM (optional — classical comparison disabled if not found)
@@ -221,6 +224,21 @@ svm_results = {}
 if os.path.exists(SVM_RES_PATH):
     with open(SVM_RES_PATH) as f:
         svm_results = json.load(f)
+
+# Load YOLO leaf detector (optional -- trained by train_yolo.py)
+yolo_model = None
+if os.path.exists(YOLO_PATH):
+    try:
+        from ultralytics import YOLO
+        yolo_model = YOLO(YOLO_PATH)
+        print(f"[VaidyaVision] YOLO leaf detector loaded: {YOLO_PATH}")
+    except ImportError:
+        print("[VaidyaVision] WARNING: ultralytics not installed -- YOLO disabled")
+    except Exception as e:
+        print(f"[VaidyaVision] WARNING: YOLO load failed: {e}")
+else:
+    print("[VaidyaVision] YOLO model not found -- bulk detect will use DIP fallback")
+    print("[VaidyaVision] Run train_yolo.py to train YOLO leaf detector")
 
 # ── APP ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="VaidyaVision API", version="4.0.0")
@@ -357,11 +375,11 @@ def run_classical_compare(suspect_bgr, reference_bgr) -> Optional[dict]:
         return base64.b64encode(buf).decode('utf-8')
 
     if overall >= 0.75:
-        verdict_text = "High similarity — DIP features closely match the genuine reference."
+        verdict_text = "High similarity -- visual features closely match the genuine reference."
     elif overall >= 0.55:
-        verdict_text = "Moderate similarity — some features differ. Possible variation or adulteration."
+        verdict_text = "Moderate similarity -- some features differ. Possible variation or adulteration."
     else:
-        verdict_text = "Low similarity — significant feature mismatch. Adulteration likely."
+        verdict_text = "Low similarity -- significant feature mismatch. Adulteration likely."
 
     return {
         'color_similarity':   round(color_sim,   4),
@@ -407,9 +425,15 @@ def fuse_verdict(
     target      = selected if selected else dl_species
     target_conf = dl_probs.get(target, 0.0)
 
-    # Entropy penalty — punishes spread-out probability distributions
+    # Entropy-based OOD detection
+    # Shannon entropy = -sum(p * log(p)). Max for 6 classes = ln(6) ~ 1.79
+    # If entropy > 1.4, the model is very uncertain -> likely OOD
     entropy         = compute_entropy(dl_probs)
-    entropy_penalty = min(entropy / 1.79, 1.0)   # max entropy for 6 classes ≈ ln(6)
+    entropy_penalty = min(entropy / 1.79, 1.0)
+
+    # Hard OOD gate: if entropy is very high, force UNKNOWN regardless
+    is_ood = entropy > 1.4
+
     dl_score        = target_conf * (1.0 - 0.20 * entropy_penalty)
 
     # Fuse with classical similarity if available
@@ -420,29 +444,9 @@ def fuse_verdict(
 
     dl_matches_target = (dl_species == target)
 
-    # ── Decision logic ──────────────────────────────────────────────────────
-    if fused_score >= FUSED_AUTH and dl_matches_target:
-        status     = "AUTHENTIC"
-        short_msg  = f"Genuine {target} leaf confirmed"
-        detail_msg = (
-            f"The AI model identified this as {dl_species} with "
-            f"{dl_conf*100:.1f}% confidence"
-            + (f", supported by {classical_sim*100:.0f}% classical DIP similarity to the reference leaf."
-               if classical_sim is not None else ".")
-        )
-        color = "green"
-
-    elif fused_score >= FUSED_AUTH and not dl_matches_target and selected:
-        # High confidence — but it's the WRONG species
-        status     = "ADULTERATED"
-        short_msg  = f"Not a genuine {target} leaf"
-        detail_msg = (
-            f"The leaf appears to be {dl_species} ({dl_conf*100:.1f}% confidence), "
-            f"not {target}. This indicates possible substitution or adulteration."
-        )
-        color = "red"
-
-    elif fused_score < FUSED_UNKN:
+    # -- Decision logic ---------------------------------------------------
+    # OOD gate takes priority over everything else
+    if is_ood or fused_score < FUSED_UNKN:
         status     = "UNKNOWN"
         short_msg  = "Cannot identify this leaf"
         detail_msg = (
@@ -452,14 +456,35 @@ def fuse_verdict(
         )
         color = "gray"
 
+    elif fused_score >= FUSED_AUTH and dl_matches_target:
+        status     = "AUTHENTIC"
+        short_msg  = f"Genuine {target} leaf confirmed"
+        detail_msg = (
+            f"The model identified this as {dl_species} with "
+            f"{dl_conf*100:.1f}% confidence"
+            + (f", supported by {classical_sim*100:.0f}% feature similarity to the reference leaf."
+               if classical_sim is not None else ".")
+        )
+        color = "green"
+
+    elif fused_score >= FUSED_AUTH and not dl_matches_target and selected:
+        # High confidence but wrong species
+        status     = "ADULTERATED"
+        short_msg  = f"Not a genuine {target} leaf"
+        detail_msg = (
+            f"The leaf appears to be {dl_species} ({dl_conf*100:.1f}% confidence), "
+            f"not {target}. This indicates possible substitution or adulteration."
+        )
+        color = "red"
+
     elif classical_sim is not None and abs(dl_score - classical_sim) > 0.25:
-        # AI and classical disagree significantly — flag for manual review
+        # Model and feature analysis disagree significantly
         status     = "VERIFY"
         short_msg  = "Manual verification recommended"
         detail_msg = (
-            f"The AI model and classical DIP analysis give inconsistent results. "
-            f"AI confidence: {dl_conf*100:.1f}%, "
-            f"Classical similarity: {classical_sim*100:.0f}%. "
+            f"The model and feature analysis give inconsistent results. "
+            f"Model confidence: {dl_conf*100:.1f}%, "
+            f"Feature similarity: {classical_sim*100:.0f}%. "
             "Expert verification is recommended before use."
         )
         color = "yellow"
@@ -474,6 +499,16 @@ def fuse_verdict(
         )
         color = "orange"
 
+    # Mismatch note: when user selected a species but model disagrees
+    mismatch_note = None
+    if selected and dl_species != selected:
+        mismatch_note = (
+            f"The model's top prediction is {dl_species} "
+            f"({dl_probs.get(dl_species, 0)*100:.0f}% confidence), "
+            f"not {selected}. Feature similarity may appear high because "
+            f"many leaves share similar textures and vein patterns."
+        )
+
     return {
         "status":          status,
         "short_msg":       short_msg,
@@ -482,6 +517,8 @@ def fuse_verdict(
         "fused_score":     fused_score,
         "fused_score_pct": round(fused_score * 100, 1),
         "is_authentic":    status == "AUTHENTIC",
+        "dl_top_species":  dl_species,
+        "mismatch_note":   mismatch_note,
     }
 
 
@@ -638,43 +675,243 @@ async def comparison_results():
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ENDPOINT 4: BULK DETECTION — DIP-based leaf localisation (no YOLO)
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+# ENDPOINT 4: BULK DETECTION -- DIP-based leaf localisation (no YOLO)
+# ==============================================================================
 
 def _detect_leaves_dip(img_bgr):
     """
-    Find individual leaves using:
-    T7: HSV masking | T3: Gaussian blur | T6: Morphological ops | Distance transform
+    Robust DIP-based leaf detection pipeline.
+    Returns list of (x1,y1,x2,y2) bounding boxes (may be empty).
     """
     h, w = img_bgr.shape[:2]
-    hsv  = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, np.array([20, 25, 25]), np.array([95, 255, 255]))
-    mask = cv2.GaussianBlur(mask, (9, 9), 0)
-    _, mask = cv2.threshold(mask, 50, 255, cv2.THRESH_BINARY)
+    min_leaf_area = h * w * 0.005   # 0.5% of image area
+
+    # -- Step 1: LAB + CLAHE for lighting normalization -----------------------
+    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
+    l_ch, a_ch, b_ch = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l_ch = clahe.apply(l_ch)
+    lab = cv2.merge([l_ch, a_ch, b_ch])
+    enhanced = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    # -- Step 2: Multi-range HSV green masking --------------------------------
+    hsv = cv2.cvtColor(enhanced, cv2.COLOR_BGR2HSV)
+    masks = []
+    for (lo, hi) in [
+        ((25, 30, 30),  (90, 255, 255)),   # Core green
+        ((20, 20, 40),  (100, 255, 255)),   # Wider green
+        ((15, 15, 50),  (110, 200, 255)),   # Olive / dark green
+    ]:
+        masks.append(cv2.inRange(hsv, np.array(lo), np.array(hi)))
+    mask = cv2.bitwise_or(masks[0], masks[1])
+    mask = cv2.bitwise_or(mask, masks[2])
+
+    # -- Step 3: Morphological ops -------------------------------------------
     k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
-    k_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (12, 12))
+    k_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_close)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  k_open)
-    dist      = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
-    dist_norm = cv2.normalize(dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    _, sure_fg = cv2.threshold(dist_norm, 0.4 * dist_norm.max(), 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(sure_fg.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_open)
+
+    # Check mask coverage -- if too low, try GrabCut fallback
+    mask_ratio = np.count_nonzero(mask) / (h * w)
+    if mask_ratio < 0.05:
+        try:
+            gc_mask = np.zeros((h, w), np.uint8)
+            bg_m = np.zeros((1, 65), np.float64)
+            fg_m = np.zeros((1, 65), np.float64)
+            rect = (int(w * 0.02), int(h * 0.02), int(w * 0.96), int(h * 0.96))
+            cv2.grabCut(img_bgr, gc_mask, rect, bg_m, fg_m, 5, cv2.GC_INIT_WITH_RECT)
+            mask = np.where((gc_mask == 2) | (gc_mask == 0), 0, 255).astype(np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k_close)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_open)
+        except Exception:
+            pass
+
+    # -- Step 4: Distance transform to find leaf centers ----------------------
+    dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+
+    if dist.max() > 0:
+        dist_norm = cv2.normalize(dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+        thresh_val = 0.35 * dist_norm.max()
+        _, sure_fg = cv2.threshold(dist_norm, thresh_val, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(
+            sure_fg.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+    else:
+        contours = []
+
+    # -- Step 5: Generate padded bounding boxes -------------------------------
+    pad = 30
     bboxes = []
     for c in contours:
-        if cv2.contourArea(c) < (h * w * 0.008):
+        if cv2.contourArea(c) < min_leaf_area * 0.1:
             continue
         x, y, bw, bh = cv2.boundingRect(c)
-        pad = 20
-        bboxes.append((max(0, x-pad), max(0, y-pad), min(w, x+bw+pad), min(h, y+bh+pad)))
-    return bboxes if bboxes else [(0, 0, w, h)]
+        x1 = max(0, x - pad)
+        y1 = max(0, y - pad)
+        x2 = min(w, x + bw + pad)
+        y2 = min(h, y + bh + pad)
+        bbox_area = (x2 - x1) * (y2 - y1)
+        if bbox_area >= min_leaf_area:
+            bboxes.append((x1, y1, x2, y2))
+
+    if not bboxes:
+        contours_direct, _ = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        for c in contours_direct:
+            area = cv2.contourArea(c)
+            if area < min_leaf_area:
+                continue
+            x, y, bw, bh = cv2.boundingRect(c)
+            bboxes.append((
+                max(0, x - pad), max(0, y - pad),
+                min(w, x + bw + pad), min(h, y + bh + pad)
+            ))
+
+    if len(bboxes) > 1:
+        bboxes = _merge_overlapping_bboxes(bboxes)
+
+    return bboxes   # may be empty -- caller handles fallback
+
+
+def _detect_leaves_sliding_window(img_bgr, grid_rows=3, grid_cols=3, overlap=0.25):
+    """
+    Sliding window leaf detection for crowded scenes where DIP segmentation
+    cannot separate individual leaves. Divides the image into an overlapping
+    grid and returns all cells as candidate regions.
+    """
+    h, w = img_bgr.shape[:2]
+    cell_h = int(h / grid_rows)
+    cell_w = int(w / grid_cols)
+    step_h = max(1, int(cell_h * (1.0 - overlap)))
+    step_w = max(1, int(cell_w * (1.0 - overlap)))
+
+    bboxes = []
+    y = 0
+    while y + cell_h <= h:
+        x = 0
+        while x + cell_w <= w:
+            bboxes.append((x, y, min(x + cell_w, w), min(y + cell_h, h)))
+            x += step_w
+        y += step_h
+
+    return bboxes
+
+
+
+
+
+
+
+def _merge_overlapping_bboxes(bboxes, overlap_thresh=0.3):
+    """Merge bounding boxes that overlap significantly."""
+    if len(bboxes) <= 1:
+        return bboxes
+
+    boxes = sorted(bboxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), reverse=True)
+    merged = []
+
+    while boxes:
+        current = boxes.pop(0)
+        x1, y1, x2, y2 = current
+        cur_area = (x2 - x1) * (y2 - y1)
+
+        to_merge = []
+        remaining = []
+        for other in boxes:
+            ox1, oy1, ox2, oy2 = other
+            # Compute intersection
+            ix1 = max(x1, ox1)
+            iy1 = max(y1, oy1)
+            ix2 = min(x2, ox2)
+            iy2 = min(y2, oy2)
+            if ix1 < ix2 and iy1 < iy2:
+                inter_area = (ix2 - ix1) * (iy2 - iy1)
+                other_area = (ox2 - ox1) * (oy2 - oy1)
+                if inter_area / min(cur_area, other_area) > overlap_thresh:
+                    to_merge.append(other)
+                    continue
+            remaining.append(other)
+
+        # Merge all overlapping boxes into current
+        for m in to_merge:
+            x1 = min(x1, m[0])
+            y1 = min(y1, m[1])
+            x2 = max(x2, m[2])
+            y2 = max(y2, m[3])
+
+        merged.append((x1, y1, x2, y2))
+        boxes = remaining
+
+    return merged
+
+
+def _nms_by_species(detections, iou_thresh=0.3):
+    """
+    Non-Maximum Suppression grouped by species.
+    Merges overlapping detections that predict the same species,
+    keeping the one with the highest confidence.
+    """
+    if len(detections) <= 1:
+        return detections
+
+    # Group by species
+    from collections import defaultdict
+    species_groups = defaultdict(list)
+    for det in detections:
+        species_groups[det["species"]].append(det)
+
+    result = []
+    for species, dets in species_groups.items():
+        # Sort by confidence descending
+        dets.sort(key=lambda d: d["dl_conf"], reverse=True)
+        keep = []
+        while dets:
+            best = dets.pop(0)
+            keep.append(best)
+            remaining = []
+            bx1, by1, bx2, by2 = best["bbox"]
+            for other in dets:
+                ox1, oy1, ox2, oy2 = other["bbox"]
+                # Compute IoU
+                ix1 = max(bx1, ox1)
+                iy1 = max(by1, oy1)
+                ix2 = min(bx2, ox2)
+                iy2 = min(by2, oy2)
+                if ix1 < ix2 and iy1 < iy2:
+                    inter = (ix2 - ix1) * (iy2 - iy1)
+                    area_b = (bx2 - bx1) * (by2 - by1)
+                    area_o = (ox2 - ox1) * (oy2 - oy1)
+                    iou = inter / (area_b + area_o - inter)
+                    if iou > iou_thresh:
+                        # Merge: expand best bbox to cover both
+                        best["bbox"] = (
+                            min(bx1, ox1), min(by1, oy1),
+                            max(bx2, ox2), max(by2, oy2),
+                        )
+                        bx1, by1, bx2, by2 = best["bbox"]
+                        continue
+                remaining.append(other)
+            dets = remaining
+        result.extend(keep)
+
+    return result
 
 
 @app.post("/bulk-predict")
 async def bulk_predict(image: UploadFile = File(...)):
     """
     Detect and classify individual leaves in a multi-leaf image.
-    Uses DIP-based detection — no YOLO required.
+    
+    Detection strategy (in priority order):
+    1. YOLO leaf detector (if trained model available)
+    2. DIP-based segmentation (contour detection)
+    3. Sliding window grid (fallback for crowded scenes)
+    
+    Each detected region is classified by EfficientNetB0 for species
+    identification and authentication verdict.
     """
     try:
         contents = await image.read()
@@ -682,43 +919,147 @@ async def bulk_predict(image: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(400, detail=str(e))
 
-    bboxes     = _detect_leaves_dip(img_bgr)
+    h, w = img_bgr.shape[:2]
+    detection_method = "unknown"
+    raw_detections = []
+
+    # ── Strategy 1: YOLO detection (best quality) ──
+    if yolo_model is not None:
+        detection_method = "yolo"
+        try:
+            results = yolo_model(img_bgr, conf=0.25, iou=0.45, verbose=False)
+            r = results[0]
+            if r.boxes is not None and len(r.boxes) > 0:
+                for box in r.boxes:
+                    xyxy = box.xyxy[0].cpu().numpy().astype(int)
+                    x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
+                    # Clamp to image bounds
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(w, x2), min(h, y2)
+                    
+                    yolo_cls = int(box.cls[0])
+                    yolo_conf = float(box.conf[0])
+                    yolo_species = CLASS_NAMES[yolo_cls] if yolo_cls < len(CLASS_NAMES) else "Unknown"
+                    
+                    # Crop and run through EfficientNetB0 for refined classification
+                    crop = img_bgr[y1:y2, x1:x2]
+                    if crop.size == 0:
+                        continue
+                    preprocessed = dip_preprocess(crop, remove_bg=True)
+                    dl_species, dl_conf, all_probs = run_dl_model(preprocessed)
+                    
+                    # Use EfficientNetB0 result if it's confident, else use YOLO's
+                    if dl_conf >= 0.50:
+                        final_species = dl_species
+                        final_conf = dl_conf
+                    else:
+                        final_species = yolo_species
+                        final_conf = yolo_conf
+                    
+                    verdict = fuse_verdict(final_species, final_conf, all_probs, None, None)
+                    
+                    raw_detections.append({
+                        "bbox":            (x1, y1, x2, y2),
+                        "species":         final_species,
+                        "dl_conf":         final_conf,
+                        "confidence_pct":  round(final_conf * 100, 1),
+                        "fused_score_pct": verdict["fused_score_pct"],
+                        "status":          verdict["status"],
+                        "is_authentic":    verdict["is_authentic"],
+                        "short_msg":       verdict["short_msg"],
+                        "yolo_species":    yolo_species,
+                        "yolo_conf":       round(yolo_conf * 100, 1),
+                    })
+        except Exception as e:
+            print(f"[VaidyaVision] YOLO detection failed: {e}, falling back to DIP")
+            detection_method = "dip_fallback"
+            raw_detections = []
+
+    # ── Strategy 2: DIP segmentation (fallback) ──
+    if not raw_detections:
+        bboxes = _detect_leaves_dip(img_bgr)
+        
+        if len(bboxes) >= 2:
+            detection_method = "dip"
+        else:
+            # Strategy 3: Sliding window for crowded scenes
+            grid_r = max(2, min(4, h // 200))
+            grid_c = max(2, min(4, w // 200))
+            bboxes = _detect_leaves_sliding_window(img_bgr, grid_r, grid_c, overlap=0.3)
+            detection_method = "grid"
+
+        for x1, y1, x2, y2 in bboxes:
+            crop = img_bgr[y1:y2, x1:x2]
+            if crop.size == 0:
+                continue
+            preprocessed = dip_preprocess(crop, remove_bg=True)
+            dl_species, dl_conf, all_probs = run_dl_model(preprocessed)
+            verdict = fuse_verdict(dl_species, dl_conf, all_probs, None, None)
+            raw_detections.append({
+                "bbox":            (x1, y1, x2, y2),
+                "species":         dl_species,
+                "dl_conf":         dl_conf,
+                "confidence_pct":  round(dl_conf * 100, 1),
+                "fused_score_pct": verdict["fused_score_pct"],
+                "status":          verdict["status"],
+                "is_authentic":    verdict["is_authentic"],
+                "short_msg":       verdict["short_msg"],
+            })
+
+        # Filter + NMS for grid fallback
+        if detection_method == "grid":
+            raw_detections = [d for d in raw_detections if d["dl_conf"] >= 0.40]
+            if len(raw_detections) > 1:
+                raw_detections = _nms_by_species(raw_detections, iou_thresh=0.3)
+
+    # ── Build final detections list ──
     detections = []
-
-    for i, (x1, y1, x2, y2) in enumerate(bboxes):
-        crop = img_bgr[y1:y2, x1:x2]
-        if crop.size == 0:
-            continue
-        preprocessed              = dip_preprocess(crop, remove_bg=True)
-        dl_species, dl_conf, all_probs = run_dl_model(preprocessed)
-        # Simple threshold for bulk mode — no classical per leaf (too slow)
-        verdict = fuse_verdict(dl_species, dl_conf, all_probs, None, None)
-        detections.append({
+    for i, det in enumerate(raw_detections):
+        entry = {
             "id":              i + 1,
-            "bbox":            [int(x1), int(y1), int(x2), int(y2)],
-            "species":         dl_species,
-            "confidence_pct":  round(dl_conf * 100, 1),
-            "fused_score_pct": verdict["fused_score_pct"],
-            "status":          verdict["status"],
-            "is_authentic":    verdict["is_authentic"],
-            "short_msg":       verdict["short_msg"],
-        })
+            "bbox":            [int(det["bbox"][0]), int(det["bbox"][1]),
+                                int(det["bbox"][2]), int(det["bbox"][3])],
+            "species":         det["species"],
+            "confidence_pct":  det["confidence_pct"],
+            "fused_score_pct": det["fused_score_pct"],
+            "status":          det["status"],
+            "is_authentic":    det["is_authentic"],
+            "short_msg":       det["short_msg"],
+        }
+        # Include YOLO-specific info if available
+        if "yolo_species" in det:
+            entry["yolo_species"] = det["yolo_species"]
+            entry["yolo_conf"] = det["yolo_conf"]
+        detections.append(entry)
 
+    # ── Draw annotated image ──
+    COLORS = {
+        "Amla": (76, 175, 80), "Ashwagandha": (156, 39, 176),
+        "Bhrami": (0, 188, 212), "Curry": (255, 193, 7),
+        "Neem": (0, 150, 136), "Tulsi": (233, 30, 99),
+    }
     img_draw = img_bgr.copy()
     for det in detections:
         x1, y1, x2, y2 = det["bbox"]
-        color = (0, 200, 0) if det["is_authentic"] else (0, 50, 255)
-        cv2.rectangle(img_draw, (x1, y1), (x2, y2), color, 3)
-        label = f"{det['species']} {det['fused_score_pct']}%"
-        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
-        cv2.rectangle(img_draw, (x1, y1-th-12), (x1+tw+10, y1), color, -1)
-        cv2.putText(img_draw, label, (x1+5, y1-6),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+        species = det["species"]
+        box_color = COLORS.get(species, (200, 200, 200))
+        thickness = 3 if det["is_authentic"] else 2
+        cv2.rectangle(img_draw, (x1, y1), (x2, y2), box_color, thickness)
+
+        label = f"{species} {det['confidence_pct']:.0f}%"
+        font_scale = max(0.45, min(0.9, w / 900))
+        font_thick = max(1, int(font_scale * 2))
+        (tw, th_text), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thick)
+        label_y = max(0, y1 - th_text - 8)
+        cv2.rectangle(img_draw, (x1, label_y), (x1 + tw + 8, y1), box_color, -1)
+        cv2.putText(img_draw, label, (x1 + 4, y1 - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thick)
 
     auth_count = sum(1 for d in detections if d["is_authentic"])
     return {
         "detections":          detections,
         "annotated_image_b64": img_to_b64(img_draw),
+        "detection_method":    detection_method,
         "summary": {
             "total":         len(detections),
             "authenticated": auth_count,
@@ -736,16 +1077,17 @@ async def health():
     return {
         "status":                "ok",
         "version":               "4.0.0",
-        "dl_model":              "vaidyavision_v2.keras (EfficientNetB0, 87.2% acc)",
+        "dl_model":              os.path.basename(MODEL_PATH),
         "temperature":           _TEMPERATURE,
         "classical_available":   _svm_bundle is not None,
         "references_available":  bool(reference_paths),
+        "yolo_available":        yolo_model is not None,
         "species":               CLASS_NAMES,
         "endpoints": [
             "POST /predict          — main authentication (DL + classical fused)",
             "POST /remove-background — GrabCut preview",
             "GET  /comparison-results — System A vs B table",
-            "POST /bulk-predict     — multi-leaf detection",
+            "POST /bulk-predict     — multi-leaf detection (YOLO + EfficientNetB0)",
             "GET  /health",
         ],
     }

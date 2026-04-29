@@ -2,7 +2,11 @@
 // Set MOCK_MODE to true to demo without backend, false to use real API
 
 export const MOCK_MODE = false;
-export const API_URL = 'http://localhost:8000';
+
+// Dynamic API URL: works from both localhost and LAN (mobile demo)
+// When accessed via LAN IP (e.g., 192.168.x.x), API also uses that IP
+const backendPort = 8000;
+export const API_URL = `http://${window.location.hostname}:${backendPort}`;
 
 // Mock delay in milliseconds (simulates network latency)
 export const MOCK_DELAY = 1500;

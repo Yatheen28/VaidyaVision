@@ -36,9 +36,15 @@ from scipy.optimize import minimize_scalar
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIG — edit these paths if your layout differs
 # ══════════════════════════════════════════════════════════════════════════════
-MODEL_PATH    = r"C:\DIP_PBL\models\vaidyavision_v2.keras"
-PROCESSED_DIR = r"C:\DIP_PBL\Images_processed"   # used for validation images
-MODELS_DIR    = r"C:\DIP_PBL\models"
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH    = os.path.join(BASE_DIR, 'models', 'vaidyavision_v3.keras')
+PROCESSED_DIR = os.path.join(BASE_DIR, 'Images_processed')
+MODELS_DIR    = os.path.join(BASE_DIR, 'models')
+
+# Fallback to v2 if v3 doesn't exist yet
+if not os.path.exists(MODEL_PATH):
+    MODEL_PATH = os.path.join(BASE_DIR, 'models', 'vaidyavision_v2.keras')
+    print(f"[Calibrate] v3 model not found, falling back to v2")
 
 # Optional: point this at a folder of UNSEEN images for better calibration.
 # Structure: same as PROCESSED_DIR (subfolders named after each species).
@@ -238,8 +244,8 @@ if __name__ == "__main__":
     )
 
     # ── Before stats ─────────────────────────────────────────────────────────
-    print(f"\n{'─'*40}")
-    print("BEFORE calibration  (T = 1.0 — raw model output):")
+    print(f"\n{'-'*40}")
+    print("BEFORE calibration  (T = 1.0 -- raw model output):")
     print_stats("before", raw_probs, labels)
 
     # ── Find optimal T (constrained to [T_MIN, T_MAX]) ────────────────────────
@@ -247,7 +253,7 @@ if __name__ == "__main__":
     optimal_T   = find_temperature(raw_probs, labels)
     cal_probs   = apply_temperature(raw_probs, optimal_T)
 
-    print(f"\n{'─'*40}")
+    print(f"\n{'-'*40}")
     print(f"AFTER  calibration  (T = {optimal_T:.3f}):")
     print_stats("after", cal_probs, labels)
     per_class_report(cal_probs, labels)
@@ -265,7 +271,7 @@ if __name__ == "__main__":
         optimal_T = T_MIN
         cal_probs = apply_temperature(raw_probs, optimal_T)
     else:
-        print(f"\n  Accuracy unchanged ({orig_acc*100:.1f}% → {cal_acc*100:.1f}%) — T is safe.")
+        print(f"\n  Accuracy unchanged ({orig_acc*100:.1f}% -> {cal_acc*100:.1f}%) -- T is safe.")
 
     # ── Write output ─────────────────────────────────────────────────────────
     orig_conf = float(raw_probs.max(axis=1).mean())
@@ -285,11 +291,11 @@ if __name__ == "__main__":
             'n_samples':           int(len(images)),
         }, f, indent=2)
 
-    print(f"\n{'─'*40}")
-    print(f"Saved → {out_path}")
+    print(f"\n{'-'*40}")
+    print(f"Saved: {out_path}")
     print(f"\nSUMMARY")
     print(f"  Temperature     : {optimal_T:.3f}")
-    print(f"  Avg confidence  : {orig_conf*100:.0f}%  →  {cal_conf*100:.0f}%")
-    print(f"  Accuracy        : {orig_acc*100:.1f}%  →  {cal_acc*100:.1f}%  (should be the same)")
-    print(f"\nRestart your backend — it loads temperature.json automatically.")
+    print(f"  Avg confidence  : {orig_conf*100:.0f}%  ->  {cal_conf*100:.0f}%")
+    print(f"  Accuracy        : {orig_acc*100:.1f}%  ->  {cal_acc*100:.1f}%  (should be the same)")
+    print(f"\nRestart your backend -- it loads temperature.json automatically.")
     print(SEP)
