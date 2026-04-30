@@ -184,7 +184,30 @@ def _make_vis(img_bgr):
 # ══════════════════════════════════════════════════════════════════════════════
 
 print(f"[VaidyaVision] Loading DL model: {os.path.abspath(MODEL_PATH)}")
-dl_model = tf.keras.models.load_model(MODEL_PATH)
+
+# ── Keras 3.x compatibility patch ─────────────────────────────────────────
+# Models saved with older Keras include 'renorm*' args in BatchNormalization
+# configs. Newer Keras rejects them. We patch the deserializer to strip them.
+_renorm_keys = {'renorm', 'renorm_clipping', 'renorm_momentum'}
+
+try:
+    import keras.src.saving.serialization_lib as _ser_lib
+    _orig_deserialize = _ser_lib.deserialize_keras_object
+    def _patched_deserialize(config, **kwargs):
+        if isinstance(config, dict):
+            cls_name = config.get('class_name', '')
+            inner = config.get('config', {})
+            if cls_name == 'BatchNormalization' and isinstance(inner, dict):
+                for rk in _renorm_keys:
+                    inner.pop(rk, None)
+        return _orig_deserialize(config, **kwargs)
+    _ser_lib.deserialize_keras_object = _patched_deserialize
+    dl_model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    _ser_lib.deserialize_keras_object = _orig_deserialize  # restore
+except Exception as e1:
+    print(f"[VaidyaVision] Patched load failed: {e1}")
+    print("[VaidyaVision] Trying direct load...")
+    dl_model = tf.keras.models.load_model(MODEL_PATH)
 print("[VaidyaVision] EfficientNetB0 loaded OK")
 
 # ── Temperature scaling ──────────────────────────────────────────────────────
@@ -258,7 +281,24 @@ def decode_image(file_bytes: bytes):
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Cannot decode image — check file format")
-    return img
+    return _cap_resolution(img)
+
+
+# Maximum pixel dimension for incoming images.
+# Phone cameras send 4000-8000px images — GrabCut on those takes 3+ minutes.
+# Capping to 800px reduces GrabCut to ~1 second while preserving analysis quality
+# (DL model only needs 224px, classical features resize to 224px internally).
+_MAX_DIM = 800
+
+def _cap_resolution(img_bgr):
+    """Downscale image so the largest side is at most _MAX_DIM pixels."""
+    h, w = img_bgr.shape[:2]
+    if max(h, w) <= _MAX_DIM:
+        return img_bgr
+    scale = _MAX_DIM / max(h, w)
+    new_w, new_h = int(w * scale), int(h * scale)
+    print(f"[VaidyaVision] Downscaling {w}x{h} → {new_w}x{new_h} (phone camera detected)")
+    return cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
 
 def img_to_b64(img) -> str:
