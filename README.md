@@ -1,11 +1,11 @@
 <div align="center">
-  <h1>🌿 VaidyaVision</h1>
+  <h1>VaidyaVision</h1>
   <p><strong>An Advanced, Hybrid AI-Based Medicinal Leaf Authentication System</strong></p>
 </div>
 
 ---
 
-## 📖 Overview
+## Overview
 
 **VaidyaVision** is a comprehensive, full-stack application designed to authenticate Ayurvedic medicinal plants with high confidence. Identifying medicinal leaves can be extremely difficult because many medicinal plants have visual "imposters" (e.g., Neem vs. Curry leaves, Ashwagandha vs. Withania coagulans). 
 
@@ -22,7 +22,7 @@ The system natively supports and distinguishes:
 
 ---
 
-## 🧠 The Hybrid AI Architecture (Backend)
+## The Hybrid AI Architecture (Backend)
 
 The core brain of the system runs in `backend/main.py` using **FastAPI**. It employs a unique dual-pipeline approach to ensure predictions are not just confident, but *correct*.
 
@@ -52,7 +52,7 @@ The backend aggregates the DL and Classical pipeline scores.
 
 ---
 
-## 💻 The Frontend Architecture (React)
+## The Frontend Architecture (React)
 
 The user interface is built for speed, aesthetics, and clarity, located in the `src/` (or `vaidyavision-ui/src/`) directory.
 
@@ -70,7 +70,7 @@ The user interface is built for speed, aesthetics, and clarity, located in the `
 
 ---
 
-## 🛠️ Setup & Local Installation
+## Setup & Local Installation
 
 ### Prerequisites
 - Node.js (v16+)
@@ -112,7 +112,7 @@ npm run dev
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 VaidyaVision/
@@ -138,5 +138,5 @@ VaidyaVision/
 
 ---
 
-## 📄 License
+## License
 This project is licensed under the MIT License.
